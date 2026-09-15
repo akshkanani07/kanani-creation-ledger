@@ -1,0 +1,216 @@
+/**
+ * Environment Variables Validation
+ * 
+ * Validates all environment variables at application startup using Zod.
+ * If any required variable is missing or invalid, the app will fail fast
+ * with a clear error message instead of crashing at runtime.
+ * 
+ * WHY THIS FILE EXISTS:
+ * - Catches missing env vars at BUILD time, not at user's expense
+ * - Provides type-safe access to environment variables
+ * - Separates server-only vars from public (browser) vars
+ * - Single source of truth for all env configuration
+ * 
+ * USAGE:
+ *   import { env } from "@/config/env";
+ *   const dbUrl = env.DATABASE_URL;  // ✅ Type-safe
+ */
+
+import { z } from "zod";
+
+// ============================================================
+// SERVER-SIDE ENVIRONMENT VARIABLES
+// ============================================================
+
+/**
+ * These variables are ONLY available on the server.
+ * They are NEVER exposed to the browser for security reasons.
+ */
+const serverSchema = z.object({
+  // ---------- Node Environment ----------
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
+
+  // ---------- Database ----------
+  DATABASE_URL: z
+    .string()
+    .url("DATABASE_URL must be a valid PostgreSQL connection string")
+    .startsWith("postgres", "DATABASE_URL must be a PostgreSQL URL"),
+
+  // ---------- Better Auth ----------
+  BETTER_AUTH_SECRET: z
+    .string()
+    .min(32, "BETTER_AUTH_SECRET must be at least 32 characters for security"),
+
+  BETTER_AUTH_URL: z
+    .string()
+    .url("BETTER_AUTH_URL must be a valid URL (e.g., http://localhost:3000)"),
+
+  // ---------- Mailjet (Email Service) ----------
+  MAILJET_API_KEY: z
+    .string()
+    .min(1, "MAILJET_API_KEY is required"),
+
+  MAILJET_SECRET_KEY: z
+    .string()
+    .min(1, "MAILJET_SECRET_KEY is required"),
+
+  MAILJET_FROM_EMAIL: z
+    .string()
+    .email("MAILJET_FROM_EMAIL must be a valid email address"),
+
+  MAILJET_FROM_NAME: z
+    .string()
+    .min(1, "MAILJET_FROM_NAME is required")
+    .default("Kanani Creation"),
+
+  // ---------- Cloudinary (Image Storage) ----------
+  CLOUDINARY_CLOUD_NAME: z
+    .string()
+    .min(1, "CLOUDINARY_CLOUD_NAME is required"),
+
+  CLOUDINARY_API_KEY: z
+    .string()
+    .min(1, "CLOUDINARY_API_KEY is required"),
+
+  CLOUDINARY_API_SECRET: z
+    .string()
+    .min(1, "CLOUDINARY_API_SECRET is required"),
+
+  // ---------- Owner ----------
+  OWNER_EMAIL: z
+    .string()
+    .email("OWNER_EMAIL must be a valid email address"),
+});
+
+// ============================================================
+// CLIENT-SIDE (PUBLIC) ENVIRONMENT VARIABLES
+// ============================================================
+
+/**
+ * These variables are exposed to the browser.
+ * Only put NON-SENSITIVE data here (URLs, public keys, etc.).
+ * 
+ * IMPORTANT: Next.js only exposes variables prefixed with NEXT_PUBLIC_
+ */
+const clientSchema = z.object({
+  NEXT_PUBLIC_APP_URL: z
+    .string()
+    .url("NEXT_PUBLIC_APP_URL must be a valid URL (e.g., http://localhost:3000)"),
+});
+
+// ============================================================
+// VALIDATION LOGIC
+// ============================================================
+
+/**
+ * Determines if we should skip validation.
+ * 
+ * Skipped during:
+ * - `next build` when not needed (prevents build failures on Vercel preview)
+ * - SKIP_ENV_VALIDATION=true (manual override for special cases)
+ */
+const skipValidation =
+  !!process.env.SKIP_ENV_VALIDATION &&
+  process.env.SKIP_ENV_VALIDATION !== "false" &&
+  process.env.SKIP_ENV_VALIDATION !== "0";
+
+/**
+ * Formats Zod errors into a readable message.
+ * Helps developers quickly identify which env var is missing/invalid.
+ */
+function formatEnvError(error: z.ZodError): string {
+  const issues = error.issues.map((issue) => {
+    const path = issue.path.join(".");
+    return `  ❌ ${path}: ${issue.message}`;
+  });
+
+  return [
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    "  🚨 INVALID ENVIRONMENT VARIABLES",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ...issues,
+    "",
+    "  📖 Check your .env.local file.",
+    "  📄 Refer to .env.example for the required format.",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    "",
+  ].join("\n");
+}
+
+/**
+ * Validates server-side environment variables.
+ */
+function validateServerEnv() {
+  if (skipValidation) return process.env as unknown as z.infer<typeof serverSchema>;
+
+  const parsed = serverSchema.safeParse(process.env);
+
+  if (!parsed.success) {
+    console.error(formatEnvError(parsed.error));
+    throw new Error("Invalid server environment variables. See errors above.");
+  }
+
+  return parsed.data;
+}
+
+/**
+ * Validates client-side (public) environment variables.
+ * 
+ * Note: On the client, `process.env` is replaced at build time by Next.js,
+ * so we must reference each variable explicitly.
+ */
+function validateClientEnv() {
+  const clientEnv = {
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  };
+
+  if (skipValidation) return clientEnv as z.infer<typeof clientSchema>;
+
+  const parsed = clientSchema.safeParse(clientEnv);
+
+  if (!parsed.success) {
+    console.error(formatEnvError(parsed.error));
+    throw new Error("Invalid client environment variables. See errors above.");
+  }
+
+  return parsed.data;
+}
+
+// ============================================================
+// EXPORTS
+// ============================================================
+
+/**
+ * Server-side environment variables.
+ * 
+ * ⚠️ NEVER import this in a Client Component.
+ * Only use in: Server Components, Server Actions, API Routes, lib/*.
+ */
+export const env = {
+  ...validateServerEnv(),
+  ...validateClientEnv(),
+};
+
+/**
+ * Type of the validated environment.
+ * Provides autocomplete and type-safety everywhere.
+ */
+export type Env = typeof env;
+
+// ============================================================
+// CONVENIENCE FLAGS
+// ============================================================
+
+/**
+ * Environment flags for conditional logic.
+ * 
+ * USAGE:
+ *   if (isProduction) { ... }
+ *   if (isDevelopment) { ... }
+ */
+export const isProduction = env.NODE_ENV === "production";
+export const isDevelopment = env.NODE_ENV === "development";
+export const isTest = env.NODE_ENV === "test";

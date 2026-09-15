@@ -1,0 +1,246 @@
+// ============================================================
+// KANANI CREATION LEDGER — DATABASE SCHEMA
+// ============================================================
+// Prisma 7 schema. All configuration lives in `prisma.config.ts`.
+// 
+// DESIGN PRINCIPLES:
+// - Single-tenant: One Owner, one company
+// - Soft Delete: Nothing is hard-deleted (audit trail)
+// - Unified Transactions: All entries in one table with type + direction
+// - Auto IDs: CUID for collision-resistant IDs
+// - Audit Trail: ActivityLog tracks all changes
+// - Better Auth: 4 tables for authentication
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+/**
+ * Type of ledger entry.
+ */
+enum TransactionType {
+  OPENING_BALANCE
+  WORK
+  PAYMENT
+  ADVANCE
+  DEDUCTION
+}
+
+/**
+ * Direction of transaction's effect on karigar balance.
+ * BALANCE FORMULA: sum(CREDIT) - sum(DEBIT)
+ */
+enum TransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+/**
+ * How the payment was made.
+ */
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  OTHER
+}
+
+/**
+ * Actions tracked in the audit log.
+ */
+enum ActivityAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  SHARE
+  EMAIL_CHANGE
+}
+
+// ============================================================
+// BETTER AUTH TABLES
+// ============================================================
+
+/**
+ * User — Owner of Kanani Creation.
+ * 
+ * Only ONE user exists. Created via first Magic Link login.
+ * Email is verified automatically via Magic Link.
+ */
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("user")
+}
+
+/**
+ * Session — Active login sessions.
+ * 
+ * Each login creates a session with a unique token.
+ * Sessions expire after 7 days (configurable in auth.ts).
+ */
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+/**
+ * Account — Auth providers linked to user.
+ * 
+ * For Magic Link, this stores the "magic-link" provider account.
+ * Future-proof: ready for Google/GitHub OAuth if needed.
+ */
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+/**
+ * Verification — Temporary tokens for Magic Link.
+ * 
+ * Each Magic Link request creates a row here.
+ * Deleted after successful verification or expiry.
+ */
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ============================================================
+// BUSINESS TABLES
+// ============================================================
+
+/**
+ * Karigar — Textile worker.
+ */
+model Karigar {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String    @unique
+  address   String?
+  
+  photoUrl  String?
+  photoId   String?
+  
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions Transaction[]
+
+  @@index([deletedAt])
+  @@index([isActive])
+  @@index([name])
+  @@map("karigars")
+}
+
+/**
+ * Transaction — Ledger entry for a Karigar.
+ */
+model Transaction {
+  id          String                @id @default(cuid())
+  
+  karigarId   String
+  karigar     Karigar               @relation(fields: [karigarId], references: [id], onDelete: Restrict)
+  
+  type        TransactionType
+  direction   TransactionDirection
+  
+  amount      Decimal               @db.Decimal(12, 2)
+  
+  quantity    Decimal?              @db.Decimal(10, 2)
+  rate        Decimal?              @db.Decimal(10, 2)
+  
+  paymentMode PaymentMode?
+  
+  reference   String?
+  description String                @db.VarChar(500)
+  
+  transactionDate DateTime          @default(now())
+  
+  deletedAt   DateTime?
+  
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([karigarId])
+  @@index([karigarId, transactionDate])
+  @@index([type])
+  @@index([deletedAt])
+  @@map("transactions")
+}
+
+/**
+ * ActivityLog — Audit trail.
+ */
+model ActivityLog {
+  id         String         @id @default(cuid())
+  
+  action     ActivityAction
+  
+  entityType String
+  entityId   String?
+  
+  metadata   Json?
+  
+  createdAt  DateTime       @default(now())
+
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}

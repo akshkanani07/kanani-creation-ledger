@@ -23,7 +23,7 @@
  *   const karigars = await prisma.karigar.findMany();
  */
 
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 
 // ============================================================

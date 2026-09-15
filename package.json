@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
   "dev": "next dev",
-  "build": "prisma generate && next build",
+  "build": "npx prisma generate && next build",
   "start": "next start",
   "lint": "eslint",
-  "postinstall": "prisma generate"
+  "postinstall": "npx prisma generate"
 },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

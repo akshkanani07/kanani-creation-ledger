@@ -3,15 +3,14 @@
 /**
  * Send Magic Link Server Action
  * 
- * Sends a magic link to the CURRENT OWNER EMAIL from DATABASE.
+ * FIXED VERSION:
+ * - Uses absolute URL with explicit origin
+ * - Sets callbackURL dynamically based on env
+ * - Ensures Magic Link redirects to correct domain (Vercel or localhost)
  * 
- * CRITICAL:
- * - Fetches email dynamically from database
- * - Supports email changes (new email gets link)
- * - Falls back to env.OWNER_EMAIL if DB empty (initial setup)
- * 
- * USAGE:
- *   const result = await sendMagicLink();
+ * CRITICAL FIX:
+ * - callbackURL must be FULL URL (not relative)
+ * - Uses NEXT_PUBLIC_APP_URL from env
  */
 
 import { auth } from "@/lib/auth";
@@ -43,11 +42,9 @@ export async function sendMagicLink(): Promise<ApiResponse> {
     let targetEmail: string;
 
     if (owner?.email) {
-      // ✅ Use current DB email (reflects changes)
       targetEmail = owner.email;
       console.log(`[SendMagicLink] Using DB email: ${targetEmail}`);
     } else if (env.OWNER_EMAIL) {
-      // ⚠️ Fallback — First time setup
       targetEmail = env.OWNER_EMAIL;
       console.log(`[SendMagicLink] Using env fallback: ${targetEmail}`);
     } else {
@@ -58,12 +55,28 @@ export async function sendMagicLink(): Promise<ApiResponse> {
     }
 
     // ═══════════════════════════════════════════
-    // STEP 3: SEND MAGIC LINK
+    // STEP 3: DETERMINE APP URL (CRITICAL FIX)
+    // ═══════════════════════════════════════════
+    // Use NEXT_PUBLIC_APP_URL from env — Vercel or localhost
+    const appUrl = env.NEXT_PUBLIC_APP_URL;
+
+    if (!appUrl) {
+      return {
+        success: false,
+        error: "NEXT_PUBLIC_APP_URL is not configured",
+      };
+    }
+
+    console.log(`[SendMagicLink] App URL: ${appUrl}`);
+
+    // ═══════════════════════════════════════════
+    // STEP 4: SEND MAGIC LINK
     // ═══════════════════════════════════════════
     await auth.api.signInMagicLink({
       body: {
         email: targetEmail,
-        callbackURL: "/dashboard", // ← Explicit Dashboard Redirect
+        // ⚠️ CRITICAL: Full URL — not relative
+        callbackURL: `${appUrl}/dashboard`,
       },
       headers: new Headers(),
     });

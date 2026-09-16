@@ -22,7 +22,18 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Save, X, Calculator, Calendar, User, Info } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  X,
+  Calculator,
+  Calendar,
+  User,
+  Info,
+  Check,
+  ChevronsUpDown,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +47,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn, formatCurrency } from "@/lib/utils";
 import { ROUTES, PAYMENT_MODES, PAYMENT_MODE_LABELS } from "@/config/constants";
 import {
@@ -74,6 +90,8 @@ export function TransactionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [karigars, setKarigars] = useState<KarigarOption[]>([]);
   const [loadingKarigars, setLoadingKarigars] = useState(true);
+  const [karigarOpen, setKarigarOpen] = useState(false);
+  const [karigarSearch, setKarigarSearch] = useState("");
 
   // ═══════════════════════════════════════════
   // FORM
@@ -85,7 +103,6 @@ export function TransactionForm({
     setError,
     watch,
     setValue,
-    control,
   } = useForm<TransactionSchemaInput>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
@@ -158,6 +175,15 @@ export function TransactionForm({
   const selectedKarigar = karigars.find((k) => k.value === watchedKarigarId);
 
   // ═══════════════════════════════════════════
+  // FILTERED KARIGARS (search)
+  // ═══════════════════════════════════════════
+  const filteredKarigars = karigarSearch.trim()
+    ? karigars.filter((k) =>
+        k.label.toLowerCase().includes(karigarSearch.toLowerCase().trim())
+      )
+    : karigars;
+
+  // ═══════════════════════════════════════════
   // SUBMIT
   // ═══════════════════════════════════════════
   const onSubmit = async (data: TransactionSchemaInput) => {
@@ -222,7 +248,7 @@ export function TransactionForm({
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       
       {/* ═══════════════════════════════════════════ */}
-      {/* KARIGAR SELECTOR */}
+      {/* KARIGAR SELECTOR — SEARCHABLE */}
       {/* ═══════════════════════════════════════════ */}
       <div className="rounded-2xl bg-white border border-slate-200/60 p-5 space-y-4">
         <div>
@@ -239,50 +265,104 @@ export function TransactionForm({
           <Label className="text-xs font-medium text-slate-700">
             Karigar <span className="text-red-500">*</span>
           </Label>
-          <Select
-            value={watchedKarigarId}
-            onValueChange={(val) =>
-              setValue("karigarId", val, { shouldValidate: true })
-            }
-            disabled={isSubmitting || loadingKarigars || mode === "edit"}
+
+          <Popover
+            open={karigarOpen}
+            onOpenChange={(open) => {
+              setKarigarOpen(open);
+              if (!open) setKarigarSearch("");
+            }}
           >
-            <SelectTrigger
-              className={cn(
-                "h-11 rounded-xl",
-                errors.karigarId && "border-red-300"
-              )}
-            >
-              <SelectValue
-                placeholder={
-                  loadingKarigars
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={karigarOpen}
+                disabled={isSubmitting || loadingKarigars || mode === "edit"}
+                className={cn(
+                  "h-11 w-full justify-between rounded-xl font-normal px-3 text-left",
+                  !watchedKarigarId && "text-slate-500",
+                  errors.karigarId && "border-red-300"
+                )}
+              >
+                <span className="truncate">
+                  {loadingKarigars
                     ? "Loading karigars..."
-                    : "Select a karigar..."
-                }
-              />
-            </SelectTrigger>
-            <SelectContent className="max-h-72">
-              {karigars.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-500">
-                  No active karigars found
-                </div>
-              ) : (
-                karigars.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    <div className="flex items-center justify-between gap-4 w-full">
-                      <span className="font-medium">{k.label}</span>
-                      <span className="text-xs text-slate-500">
+                    : selectedKarigar
+                      ? selectedKarigar.label
+                      : "Select a karigar..."}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent
+              className="w-[--radix-popover-trigger-width] p-0 rounded-xl"
+              align="start"
+            >
+              {/* Search box */}
+              <div className="flex items-center gap-2 border-b border-slate-100 px-3">
+                <Search className="h-4 w-4 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  value={karigarSearch}
+                  onChange={(e) => setKarigarSearch(e.target.value)}
+                  placeholder="Search karigar..."
+                  className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-slate-400"
+                  autoFocus
+                />
+              </div>
+
+              {/* List */}
+              <div className="max-h-72 overflow-y-auto py-1">
+                {filteredKarigars.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500">
+                    No karigar found
+                  </div>
+                ) : (
+                  filteredKarigars.map((k) => (
+                    <button
+                      key={k.value}
+                      type="button"
+                      onClick={() => {
+                        setValue("karigarId", k.value, {
+                          shouldValidate: true,
+                        });
+                        setKarigarOpen(false);
+                        setKarigarSearch("");
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-4 px-3 py-2.5 text-left text-sm cursor-pointer transition-colors",
+                        "hover:bg-slate-50",
+                        watchedKarigarId === k.value && "bg-slate-50"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Check
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            watchedKarigarId === k.value
+                              ? "opacity-100 text-slate-900"
+                              : "opacity-0"
+                          )}
+                        />
+                        <span className="font-medium truncate">{k.label}</span>
+                      </div>
+                      <span className="text-xs text-slate-500 shrink-0">
                         {k.balance > 0
                           ? `${formatCurrency(k.balance)} Cr`
                           : k.balance < 0
                             ? `${formatCurrency(Math.abs(k.balance))} Dr`
                             : "Settled"}
                       </span>
-                    </div>
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
+                    </button>
+                  ))
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
           {errors.karigarId && (
             <p className="text-xs text-red-600">{errors.karigarId.message}</p>
           )}
@@ -321,7 +401,6 @@ export function TransactionForm({
           onChange={(type) => {
             setValue("type", type, { shouldValidate: true });
             setValue("direction", TYPE_DEFAULT_DIRECTION[type]);
-            // Clear conditional fields when type changes
             if (type !== "WORK") {
               setValue("quantity", undefined);
               setValue("rate", undefined);
@@ -354,7 +433,6 @@ export function TransactionForm({
           </p>
         </div>
 
-        {/* Quantity + Rate (Work only) */}
         {isWork && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -403,7 +481,6 @@ export function TransactionForm({
           </div>
         )}
 
-        {/* Amount */}
         <div className="space-y-1.5">
           <Label htmlFor="amount" className="text-xs font-medium text-slate-700">
             Amount (₹) <span className="text-red-500">*</span>
@@ -438,7 +515,6 @@ export function TransactionForm({
           )}
         </div>
 
-        {/* Direction Indicator */}
         <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-100">
           <Info className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
           <p className="text-[11px] text-slate-600">
@@ -458,7 +534,6 @@ export function TransactionForm({
           </p>
         </div>
 
-        {/* Payment Mode */}
         {isPaymentOrAdvance && (
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-700">
@@ -514,7 +589,6 @@ export function TransactionForm({
           </p>
         </div>
 
-        {/* Reference */}
         <div className="space-y-1.5">
           <Label htmlFor="reference" className="text-xs font-medium text-slate-700">
             Reference{" "}
@@ -529,7 +603,6 @@ export function TransactionForm({
           />
         </div>
 
-        {/* Description */}
         <div className="space-y-1.5">
           <Label htmlFor="description" className="text-xs font-medium text-slate-700">
             Description <span className="text-red-500">*</span>
@@ -551,7 +624,6 @@ export function TransactionForm({
           )}
         </div>
 
-        {/* Transaction Date */}
         <div className="space-y-1.5">
           <Label htmlFor="transactionDate" className="text-xs font-medium text-slate-700">
             Transaction Date

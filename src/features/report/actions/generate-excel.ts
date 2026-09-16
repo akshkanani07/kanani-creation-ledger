@@ -1,21 +1,24 @@
 "use server";
 
 /**
- * Generate Excel — Server Action
+ * Generate Excel — Server Action (Premium)
  * 
- * Generates Excel report with multiple sheets:
- * - Summary (for all reports)
- * - Transactions (for karigar/by-type)
- * - All Karigars (for all-karigars scope)
+ * FEATURES:
+ * - Multi-sheet workbook (Summary + Transactions)
+ * - Web logo from /icons/logo.png
+ * - Brand colors (Slate-900)
+ * - Column-wise Credit/Debit split
+ * - Running Balance column
+ * - Auto-width columns
+ * - Formatted amounts (₹ Indian format)
  * 
  * USAGE:
  *   const result = await generateReportExcel({ scope: "karigar", karigarId });
- *   if (result.success) {
- *     // result.data.base64 — Download
- *   }
  */
 
 import ExcelJS from "exceljs";
+import fs from "fs";
+import path from "path";
 import { getReportData } from "./get-report-data";
 import { TRANSACTION_TYPE_LABELS, PAYMENT_MODE_LABELS } from "@/config/constants";
 import type { ApiResponse } from "@/types";
@@ -30,19 +33,38 @@ import type {
 // ═══════════════════════════════════════════════════════════
 
 const COLORS = {
-  primary: "FF0F172A", // Slate-900
+  primary: "FF0F172A",       // Slate-900
   primaryText: "FFFFFFFF",
-  accent: "FF1E40AF", // Blue-800
-  success: "FF10B981", // Emerald-500
-  warning: "FFF59E0B", // Amber-500
-  danger: "FFEF4444", // Red-500
-  lightGray: "FFF1F5F9", // Slate-100
-  border: "FFE2E8F0", // Slate-200
-  text: "FF0F172A", // Slate-900
-  textMuted: "FF64748B", // Slate-500
-  creditBg: "FFECFDF5", // Emerald-50
-  debitBg: "FFFFFBEB", // Amber-50
+  accent: "FF1E40AF",        // Blue-800
+  success: "FF10B981",       // Emerald-500
+  successBg: "FFD1FAE5",     // Emerald-100
+  warning: "FFF59E0B",       // Amber-500
+  warningBg: "FFFEF3C7",     // Amber-100
+  danger: "FFEF4444",        // Red-500
+  dangerBg: "FFFEE2E2",      // Red-100
+  lightGray: "FFF1F5F9",     // Slate-100
+  bgMuted: "FFF8FAFC",       // Slate-50
+  border: "FFE2E8F0",        // Slate-200
+  text: "FF0F172A",          // Slate-900
+  textMuted: "FF64748B",     // Slate-500
+  white: "FFFFFFFF",
 };
+
+// ═══════════════════════════════════════════════════════════
+// LOGO PATH
+// ═══════════════════════════════════════════════════════════
+
+function getLogoPath(): string | null {
+  try {
+    const logoPath = path.join(process.cwd(), "public", "icons", "logo.png");
+    if (fs.existsSync(logoPath)) {
+      return logoPath;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // SERVER ACTION
@@ -79,15 +101,15 @@ export async function generateReportExcel(
     // ═══════════════════════════════════════════
     switch (reportData.scope) {
       case "karigar":
-        buildKarigarSheets(workbook, reportData);
+        await buildKarigarSheets(workbook, reportData);
         break;
 
       case "all-karigars":
-        buildAllKarigarsSheet(workbook, reportData);
+        await buildAllKarigarsSheet(workbook, reportData);
         break;
 
       case "by-type":
-        buildByTypeSheets(workbook, reportData);
+        await buildByTypeSheets(workbook, reportData);
         break;
     }
 
@@ -128,200 +150,332 @@ export async function generateReportExcel(
 }
 
 // ═══════════════════════════════════════════════════════════
-// SHEET 1 — KARIGAR SHEETS (Summary + Transactions)
+// KARIGAR SHEETS — SUMMARY + TRANSACTIONS
 // ═══════════════════════════════════════════════════════════
 
-function buildKarigarSheets(
+async function buildKarigarSheets(
   workbook: ExcelJS.Workbook,
   data: Extract<ReportData, { scope: "karigar" }>
 ) {
-  // ─────────────────────────────────────────
-  // Sheet 1: Summary
-  // ─────────────────────────────────────────
+  // ═══════════════════════════════════════════
+  // SHEET 1: SUMMARY
+  // ═══════════════════════════════════════════
   const summarySheet = workbook.addWorksheet("Summary", {
     properties: { tabColor: { argb: COLORS.primary.slice(2) } },
+    views: [{ showGridLines: false }],
   });
 
   summarySheet.columns = [
-    { header: "", key: "label", width: 25 },
-    { header: "", key: "value", width: 25 },
+    { width: 3 },   // A - Margin
+    { width: 25 },  // B - Label
+    { width: 25 },  // C - Value
+    { width: 3 },   // D - Margin
   ];
 
-  // Title
-  const titleRow = summarySheet.addRow(["Kanani Creation Ledger"]);
-  summarySheet.mergeCells(`A${titleRow.number}:B${titleRow.number}`);
-  titleRow.font = { size: 16, bold: true, color: { argb: COLORS.text } };
-  titleRow.alignment = { horizontal: "center", vertical: "middle" };
-  titleRow.height = 30;
+  // ─────────────────────────────────────────
+  // LOGO + BRANDING
+  // ─────────────────────────────────────────
+  const logoPath = getLogoPath();
 
-  summarySheet.addRow([""]);
-
-  // Karigar Info
-  addSectionHeader(summarySheet, "Karigar Information");
-  summarySheet.addRow(["Name", data.karigar.name]);
-  summarySheet.addRow(["Phone", data.karigar.phone]);
-  if (data.karigar.address) {
-    summarySheet.addRow(["Address", data.karigar.address]);
+  // Row 1 - Logo (if available)
+  if (logoPath) {
+    const logoId = workbook.addImage({
+      filename: logoPath,
+      extension: "png",
+    });
+    summarySheet.addImage(logoId, {
+      tl: { col: 0.1, row: 0.1 },
+      ext: { width: 60, height: 60 },
+    });
   }
-  summarySheet.addRow(["Period", data.metadata.period.label]);
 
-  summarySheet.addRow([""]);
+  // Row 2-3 - Brand Name
+  summarySheet.getRow(2).height = 24;
+  summarySheet.getRow(3).height = 18;
 
-  // Balance Summary
-  addSectionHeader(summarySheet, "Balance Summary");
-  summarySheet.addRow(["Opening Balance", formatAmount(data.karigar.openingBalance)]);
-  summarySheet.addRow(["Total Credit", formatAmount(data.karigar.totalCredit)]);
-  summarySheet.addRow(["Total Debit", formatAmount(data.karigar.totalDebit)]);
-  summarySheet.addRow(["Closing Balance", formatAmount(data.karigar.closingBalance)]);
-  summarySheet.addRow(["Transactions", data.karigar.transactionCount]);
+  const brandNameCell = summarySheet.getCell("B2");
+  brandNameCell.value = data.metadata.companyName;
+  brandNameCell.font = { size: 18, bold: true, color: { argb: COLORS.primary } };
 
-  // Styling for values
-  summarySheet.eachRow((row, rowNumber) => {
-    if (rowNumber > 2) {
-      row.getCell(1).font = { bold: true, size: 11, color: { argb: COLORS.textMuted } };
-      row.getCell(2).font = { size: 11, color: { argb: COLORS.text } };
-    }
-  });
+  const brandTaglineCell = summarySheet.getCell("B3");
+  brandTaglineCell.value = data.metadata.companyIndustry.toUpperCase();
+  brandTaglineCell.font = { size: 9, color: { argb: COLORS.textMuted }, bold: true };
 
-  // Highlight closing balance
-  const closingRow = summarySheet.getRow(summarySheet.rowCount);
-  summarySheet.eachRow((row) => {
-    if (row.getCell(1).value === "Closing Balance") {
-      row.getCell(1).font = { bold: true, size: 12, color: { argb: COLORS.primary } };
-      row.getCell(2).font = { bold: true, size: 12, color: { argb: COLORS.primary } };
-      row.getCell(2).fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: COLORS.lightGray },
-      };
-    }
-  });
-
-  summarySheet.addRow([""]);
-  summarySheet.addRow(["Generated", formatDateTime(data.metadata.generatedAt)]);
-
-  // ─────────────────────────────────────────
-  // Sheet 2: Transactions
-  // ─────────────────────────────────────────
-  const txSheet = workbook.addWorksheet("Transactions", {
-    properties: { tabColor: { argb: COLORS.accent.slice(2) } },
-  });
-
-  txSheet.columns = [
-    { header: "Date", key: "date", width: 14 },
-    { header: "Type", key: "type", width: 18 },
-    { header: "Description", key: "description", width: 40 },
-    { header: "Quantity", key: "quantity", width: 12 },
-    { header: "Rate", key: "rate", width: 12 },
-    { header: "Payment Mode", key: "paymentMode", width: 15 },
-    { header: "Reference", key: "reference", width: 15 },
-    { header: "Credit", key: "credit", width: 14 },
-    { header: "Debit", key: "debit", width: 14 },
-    { header: "Balance", key: "balance", width: 16 },
-  ];
-
-  // Header styling
-  const headerRow = txSheet.getRow(1);
-  headerRow.font = { bold: true, color: { argb: COLORS.primaryText }, size: 10 };
-  headerRow.fill = {
+  // Row 4-5 - Report Badge
+  summarySheet.getRow(5).height = 20;
+  const badgeCell = summarySheet.getCell("B5");
+  badgeCell.value = "LEDGER STATEMENT";
+  badgeCell.font = { size: 10, bold: true, color: { argb: COLORS.primaryText } };
+  badgeCell.alignment = { horizontal: "center", vertical: "middle" };
+  badgeCell.fill = {
     type: "pattern",
     pattern: "solid",
     fgColor: { argb: COLORS.primary },
   };
-  headerRow.alignment = { horizontal: "center", vertical: "middle" };
-  headerRow.height = 24;
+  summarySheet.mergeCells("B5:C5");
 
-  // Add rows
-  data.transactions.forEach((tx) => {
+  // Row 6 - Gap
+  summarySheet.addRow([]);
+
+  // ─────────────────────────────────────────
+  // KARIGAR INFO
+  // ─────────────────────────────────────────
+  addSectionHeader(summarySheet, "Karigar Information", 7);
+
+  summarySheet.addRow(["", "Name", data.karigar.name]);
+  summarySheet.addRow(["", "Phone", data.karigar.phone]);
+  if (data.karigar.address) {
+    summarySheet.addRow(["", "Address", data.karigar.address]);
+  }
+  summarySheet.addRow(["", "Period", data.metadata.period.label]);
+  summarySheet.addRow(["", "Generated", formatDateTime(data.metadata.generatedAt)]);
+
+  // Style info rows
+  styleInfoRows(summarySheet, 8, summarySheet.rowCount);
+
+  // Row - Gap
+  summarySheet.addRow([]);
+
+  // ─────────────────────────────────────────
+  // BALANCE SUMMARY
+  // ─────────────────────────────────────────
+  addSectionHeader(summarySheet, "Balance Summary", summarySheet.rowCount + 1);
+
+  summarySheet.addRow(["", "Opening Balance", formatAmount(data.karigar.openingBalance)]);
+  summarySheet.addRow(["", "Total Credit", formatAmount(data.karigar.totalCredit)]);
+  summarySheet.addRow(["", "Total Debit", formatAmount(data.karigar.totalDebit)]);
+  summarySheet.addRow(["", "Closing Balance", formatAmount(data.karigar.closingBalance)]);
+  summarySheet.addRow(["", "Transactions", data.karigar.transactionCount]);
+
+  // Style balance rows
+  const balanceStartRow = summarySheet.rowCount - 4;
+  styleInfoRows(summarySheet, balanceStartRow, summarySheet.rowCount);
+
+  // Highlight Closing Balance
+  const closingRow = summarySheet.rowCount - 1;
+  const closingLabelCell = summarySheet.getCell(`B${closingRow}`);
+  const closingValueCell = summarySheet.getCell(`C${closingRow}`);
+
+  closingLabelCell.font = { size: 12, bold: true, color: { argb: COLORS.primary } };
+  closingValueCell.font = { size: 14, bold: true, color: { argb: COLORS.primary } };
+  closingValueCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: COLORS.lightGray },
+  };
+  closingValueCell.border = {
+    top: { style: "thin", color: { argb: COLORS.primary } },
+    bottom: { style: "thin", color: { argb: COLORS.primary } },
+    left: { style: "thin", color: { argb: COLORS.primary } },
+    right: { style: "thin", color: { argb: COLORS.primary } },
+  };
+
+  // ─────────────────────────────────────────
+  // SHEET 2: TRANSACTIONS
+  // ─────────────────────────────────────────
+  const txSheet = workbook.addWorksheet("Transactions", {
+    properties: { tabColor: { argb: COLORS.accent.slice(2) } },
+    views: [{ showGridLines: false }],
+  });
+
+  txSheet.columns = [
+    { header: "Date", key: "date", width: 14 },
+    { header: "Type", key: "type", width: 16 },
+    { header: "Description", key: "description", width: 45 },
+    { header: "Amount", key: "amount", width: 16 },
+    { header: "Credit", key: "credit", width: 16 },
+    { header: "Debit", key: "debit", width: 16 },
+    { header: "Balance", key: "balance", width: 18 },
+  ];
+
+  // Style Header
+  const headerRow = txSheet.getRow(1);
+  headerRow.height = 28;
+  headerRow.eachCell((cell) => {
+    cell.font = { size: 10, bold: true, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = {
+      top: { style: "thin", color: { argb: COLORS.border } },
+      bottom: { style: "thin", color: { argb: COLORS.border } },
+      left: { style: "thin", color: { argb: COLORS.border } },
+      right: { style: "thin", color: { argb: COLORS.border } },
+    };
+  });
+
+  // ─────────────────────────────────────────
+  // TRANSACTION ROWS
+  // ─────────────────────────────────────────
+  data.transactions.forEach((tx, index) => {
     const isCredit = tx.direction === "CREDIT";
+    const alt = index % 2 === 1;
 
     const row = txSheet.addRow({
       date: formatDate(tx.date),
       type: TRANSACTION_TYPE_LABELS[tx.type],
       description: tx.description,
-      quantity: tx.quantity ?? "",
-      rate: tx.rate ? formatAmount(tx.rate) : "",
-      paymentMode: tx.paymentMode
-        ? PAYMENT_MODE_LABELS[tx.paymentMode as keyof typeof PAYMENT_MODE_LABELS]
-        : "",
-      reference: tx.reference ?? "",
-      credit: isCredit ? tx.amount : "",
-      debit: !isCredit ? tx.amount : "",
+      amount: tx.amount,
+      credit: isCredit ? tx.amount : null,
+      debit: !isCredit ? tx.amount : null,
       balance: tx.runningBalance,
     });
 
-    // Color coding
-    const creditCell = row.getCell("credit");
-    const debitCell = row.getCell("debit");
+    row.height = 22;
 
-    if (isCredit) {
-      creditCell.font = { color: { argb: COLORS.success }, bold: true };
-    } else {
-      debitCell.font = { color: { argb: COLORS.warning }, bold: true };
-    }
-
-    // Number formats
-    row.getCell("credit").numFmt = '"_"₹"#,##0.00';
-    row.getCell("debit").numFmt = '"_"₹"#,##0.00';
-    row.getCell("balance").numFmt = '"_"₹"#,##0.00';
-    row.getCell("quantity").alignment = { horizontal: "right" };
-    row.getCell("rate").alignment = { horizontal: "right" };
-
-    // Border
+    // Border + Alternate BG
     row.eachCell((cell) => {
       cell.border = {
         top: { style: "thin", color: { argb: COLORS.border } },
-        left: { style: "thin", color: { argb: COLORS.border } },
         bottom: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
         right: { style: "thin", color: { argb: COLORS.border } },
       };
+      if (alt) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: COLORS.bgMuted },
+        };
+      }
     });
+
+    // Date - center
+    row.getCell("date").alignment = { horizontal: "center" };
+
+    // Type - center
+    row.getCell("type").alignment = { horizontal: "center" };
+
+    // Amount formats
+    row.getCell("amount").numFmt = '"_"₹"#,##0.00';
+    row.getCell("amount").alignment = { horizontal: "right" };
+    row.getCell("amount").font = { bold: true };
+
+    // Credit
+    row.getCell("credit").numFmt = '"_"₹"#,##0.00';
+    row.getCell("credit").alignment = { horizontal: "right" };
+    if (isCredit) {
+      row.getCell("credit").font = { color: { argb: COLORS.success }, bold: true };
+      row.getCell("credit").fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: COLORS.successBg },
+      };
+    }
+
+    // Debit
+    row.getCell("debit").numFmt = '"_"₹"#,##0.00';
+    row.getCell("debit").alignment = { horizontal: "right" };
+    if (!isCredit) {
+      row.getCell("debit").font = { color: { argb: COLORS.warning }, bold: true };
+      row.getCell("debit").fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: COLORS.warningBg },
+      };
+    }
+
+    // Balance
+    row.getCell("balance").numFmt = '"_"₹"#,##0.00';
+    row.getCell("balance").alignment = { horizontal: "right" };
+    row.getCell("balance").font = { bold: true };
   });
+
+  // ─────────────────────────────────────────
+  // TOTALS ROW
+  // ─────────────────────────────────────────
+  const totalsRow = txSheet.addRow({
+    date: "TOTAL",
+    type: "",
+    description: `${data.transactions.length} entries`,
+    amount: null,
+    credit: data.karigar.totalCredit,
+    debit: data.karigar.totalDebit,
+    balance: data.karigar.closingBalance,
+  });
+
+  totalsRow.height = 26;
+  totalsRow.eachCell((cell) => {
+    cell.font = { bold: true, size: 11, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "right", vertical: "middle" };
+    cell.border = {
+      top: { style: "medium", color: { argb: COLORS.primary } },
+      bottom: { style: "medium", color: { argb: COLORS.primary } },
+      left: { style: "thin", color: { argb: COLORS.border } },
+      right: { style: "thin", color: { argb: COLORS.border } },
+    };
+  });
+  totalsRow.getCell("date").alignment = { horizontal: "left" };
+  totalsRow.getCell("description").alignment = { horizontal: "left" };
 
   // Freeze header
   txSheet.views = [{ state: "frozen", ySplit: 1 }];
+
+  // Auto-filter
+  txSheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: data.transactions.length + 1, column: 7 },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
-// SHEET 2 — ALL KARIGARS
+// ALL KARIGARS SHEET
 // ═══════════════════════════════════════════════════════════
 
-function buildAllKarigarsSheet(
+async function buildAllKarigarsSheet(
   workbook: ExcelJS.Workbook,
   data: Extract<ReportData, { scope: "all-karigars" }>
 ) {
   const sheet = workbook.addWorksheet("All Karigars", {
     properties: { tabColor: { argb: COLORS.primary.slice(2) } },
+    views: [{ showGridLines: false }],
   });
 
   sheet.columns = [
     { header: "#", key: "index", width: 6 },
-    { header: "Name", key: "name", width: 25 },
+    { header: "Name", key: "name", width: 28 },
     { header: "Phone", key: "phone", width: 16 },
     { header: "Address", key: "address", width: 30 },
-    { header: "Transactions", key: "count", width: 14 },
-    { header: "Credit", key: "credit", width: 14 },
-    { header: "Debit", key: "debit", width: 14 },
-    { header: "Balance", key: "balance", width: 16 },
+    { header: "Txns", key: "count", width: 8 },
+    { header: "Credit", key: "credit", width: 16 },
+    { header: "Debit", key: "debit", width: 16 },
+    { header: "Balance", key: "balance", width: 18 },
     { header: "Status", key: "status", width: 12 },
   ];
 
   // Header styling
   const headerRow = sheet.getRow(1);
-  headerRow.font = { bold: true, color: { argb: COLORS.primaryText }, size: 10 };
-  headerRow.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: COLORS.primary },
-  };
-  headerRow.height = 24;
-  headerRow.alignment = { horizontal: "center", vertical: "middle" };
+  headerRow.height = 28;
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, size: 10, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = {
+      top: { style: "thin", color: { argb: COLORS.border } },
+      bottom: { style: "thin", color: { argb: COLORS.border } },
+      left: { style: "thin", color: { argb: COLORS.border } },
+      right: { style: "thin", color: { argb: COLORS.border } },
+    };
+  });
 
-  // Add rows
+  // Data rows
   data.karigars.forEach((karigar, index) => {
     const isCredit = karigar.closingBalance > 0.01;
     const isDebit = karigar.closingBalance < -0.01;
-    const status = isCredit ? "CREDIT" : isDebit ? "DEBIT" : "Settled";
+    const isSettled = !isCredit && !isDebit;
+    const alt = index % 2 === 1;
 
     const row = sheet.addRow({
       index: index + 1,
@@ -332,43 +486,67 @@ function buildAllKarigarsSheet(
       credit: karigar.totalCredit,
       debit: karigar.totalDebit,
       balance: karigar.closingBalance,
-      status,
+      status: isCredit ? "CREDIT" : isDebit ? "DEBIT" : "SETTLED",
     });
 
-    // Number formats
-    row.getCell("credit").numFmt = '"_"₹"#,##0.00';
-    row.getCell("debit").numFmt = '"_"₹"#,##0.00';
-    row.getCell("balance").numFmt = '"_"₹"#,##0.00';
-    row.getCell("count").alignment = { horizontal: "center" };
-    row.getCell("status").alignment = { horizontal: "center" };
+    row.height = 20;
 
-    // Status color
-    const statusCell = row.getCell("status");
-    if (isCredit) {
-      statusCell.font = { color: { argb: COLORS.success }, bold: true };
-    } else if (isDebit) {
-      statusCell.font = { color: { argb: COLORS.warning }, bold: true };
-    } else {
-      statusCell.font = { color: { argb: COLORS.textMuted } };
-    }
-
-    // Border
     row.eachCell((cell) => {
       cell.border = {
         top: { style: "thin", color: { argb: COLORS.border } },
-        left: { style: "thin", color: { argb: COLORS.border } },
         bottom: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
         right: { style: "thin", color: { argb: COLORS.border } },
       };
+      if (alt) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: COLORS.bgMuted },
+        };
+      }
     });
+
+    // Center align
+    row.getCell("index").alignment = { horizontal: "center" };
+    row.getCell("count").alignment = { horizontal: "center" };
+    row.getCell("status").alignment = { horizontal: "center" };
+
+    // Currency formats
+    row.getCell("credit").numFmt = '"_"₹"#,##0.00';
+    row.getCell("debit").numFmt = '"_"₹"#,##0.00';
+    row.getCell("balance").numFmt = '"_"₹"#,##0.00';
+    row.getCell("credit").alignment = { horizontal: "right" };
+    row.getCell("debit").alignment = { horizontal: "right" };
+    row.getCell("balance").alignment = { horizontal: "right" };
+
+    // Status styling
+    const statusCell = row.getCell("status");
+    if (isCredit) {
+      statusCell.font = { color: { argb: COLORS.success }, bold: true };
+      statusCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: COLORS.successBg },
+      };
+    } else if (isDebit) {
+      statusCell.font = { color: { argb: COLORS.warning }, bold: true };
+      statusCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: COLORS.warningBg },
+      };
+    } else {
+      statusCell.font = { color: { argb: COLORS.textMuted }, bold: true };
+    }
   });
 
-  // Totals Row
+  // Totals row
   const totalsRow = sheet.addRow({
     index: "",
     name: "TOTAL",
-    phone: "",
-    address: `${data.totals.totalKarigars} karigars`,
+    phone: `${data.totals.totalKarigars} karigars`,
+    address: "",
     count: "",
     credit: data.totals.totalCredit,
     debit: data.totals.totalDebit,
@@ -376,91 +554,114 @@ function buildAllKarigarsSheet(
     status: "",
   });
 
-  totalsRow.font = { bold: true, size: 11, color: { argb: COLORS.primary } };
-  totalsRow.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: COLORS.lightGray },
-  };
+  totalsRow.height = 24;
+  totalsRow.eachCell((cell) => {
+    cell.font = { bold: true, size: 11, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "right", vertical: "middle" };
+  });
+  totalsRow.getCell("name").alignment = { horizontal: "left" };
   totalsRow.getCell("credit").numFmt = '"_"₹"#,##0.00';
   totalsRow.getCell("debit").numFmt = '"_"₹"#,##0.00';
   totalsRow.getCell("balance").numFmt = '"_"₹"#,##0.00';
 
-  // Freeze header
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 }
 
 // ═══════════════════════════════════════════════════════════
-// SHEET 3 — BY TYPE (Distribution + Transactions)
+// BY TYPE SHEETS
 // ═══════════════════════════════════════════════════════════
 
-function buildByTypeSheets(
+async function buildByTypeSheets(
   workbook: ExcelJS.Workbook,
   data: Extract<ReportData, { scope: "by-type" }>
 ) {
-  // Sheet 1: Distribution
+  // Distribution sheet
   const distSheet = workbook.addWorksheet("Distribution", {
     properties: { tabColor: { argb: COLORS.primary.slice(2) } },
+    views: [{ showGridLines: false }],
   });
 
   distSheet.columns = [
     { header: "Type", key: "type", width: 22 },
     { header: "Count", key: "count", width: 12 },
-    { header: "Total Amount", key: "amount", width: 18 },
+    { header: "Total Amount", key: "amount", width: 20 },
   ];
 
   const headerRow = distSheet.getRow(1);
-  headerRow.font = { bold: true, color: { argb: COLORS.primaryText }, size: 10 };
-  headerRow.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: COLORS.primary },
-  };
-  headerRow.height = 24;
-  headerRow.alignment = { horizontal: "center", vertical: "middle" };
+  headerRow.height = 28;
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, size: 10, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
 
-  data.distribution.forEach((item) => {
+  data.distribution.forEach((item, index) => {
+    const alt = index % 2 === 1;
     const row = distSheet.addRow({
       type: TRANSACTION_TYPE_LABELS[item.type],
       count: item.count,
       amount: item.totalAmount,
     });
 
-    row.getCell("amount").numFmt = '"_"₹"#,##0.00';
-    row.getCell("count").alignment = { horizontal: "center" };
-
+    row.height = 22;
     row.eachCell((cell) => {
       cell.border = {
         top: { style: "thin", color: { argb: COLORS.border } },
-        left: { style: "thin", color: { argb: COLORS.border } },
         bottom: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
         right: { style: "thin", color: { argb: COLORS.border } },
       };
+      if (alt) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: COLORS.bgMuted },
+        };
+      }
     });
+
+    row.getCell("count").alignment = { horizontal: "center" };
+    row.getCell("amount").numFmt = '"_"₹"#,##0.00';
+    row.getCell("amount").alignment = { horizontal: "right" };
+    row.getCell("amount").font = { bold: true };
   });
 
-  // Sheet 2: Transactions
+  // Transactions sheet
   const txSheet = workbook.addWorksheet("Transactions", {
     properties: { tabColor: { argb: COLORS.accent.slice(2) } },
+    views: [{ showGridLines: false }],
   });
 
   txSheet.columns = [
     { header: "Date", key: "date", width: 14 },
-    { header: "Type", key: "type", width: 18 },
-    { header: "Description", key: "description", width: 40 },
-    { header: "Amount", key: "amount", width: 16 },
+    { header: "Type", key: "type", width: 16 },
+    { header: "Description", key: "description", width: 45 },
+    { header: "Amount", key: "amount", width: 18 },
   ];
 
   const txHeaderRow = txSheet.getRow(1);
-  txHeaderRow.font = { bold: true, color: { argb: COLORS.primaryText }, size: 10 };
-  txHeaderRow.fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: COLORS.primary },
-  };
-  txHeaderRow.height = 24;
+  txHeaderRow.height = 28;
+  txHeaderRow.eachCell((cell) => {
+    cell.font = { bold: true, size: 10, color: { argb: COLORS.primaryText } };
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: COLORS.primary },
+    };
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+  });
 
-  data.transactions.forEach((tx) => {
+  data.transactions.forEach((tx, index) => {
+    const alt = index % 2 === 1;
     const row = txSheet.addRow({
       date: formatDate(tx.date),
       type: TRANSACTION_TYPE_LABELS[tx.type],
@@ -468,7 +669,27 @@ function buildByTypeSheets(
       amount: tx.amount,
     });
 
+    row.height = 20;
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: COLORS.border } },
+        bottom: { style: "thin", color: { argb: COLORS.border } },
+        left: { style: "thin", color: { argb: COLORS.border } },
+        right: { style: "thin", color: { argb: COLORS.border } },
+      };
+      if (alt) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: COLORS.bgMuted },
+        };
+      }
+    });
+
+    row.getCell("date").alignment = { horizontal: "center" };
+    row.getCell("type").alignment = { horizontal: "center" };
     row.getCell("amount").numFmt = '"_"₹"#,##0.00';
+    row.getCell("amount").alignment = { horizontal: "right" };
   });
 
   txSheet.views = [{ state: "frozen", ySplit: 1 }];
@@ -480,22 +701,49 @@ function buildByTypeSheets(
 
 function addSectionHeader(
   sheet: ExcelJS.Worksheet,
-  title: string
+  title: string,
+  rowNumber: number
 ): void {
-  const row = sheet.addRow([title]);
-  sheet.mergeCells(`A${row.number}:B${row.number}`);
-  row.font = { bold: true, size: 12, color: { argb: COLORS.primary } };
-  row.fill = {
+  const row = sheet.getRow(rowNumber);
+  const cell = row.getCell("B");
+  cell.value = title.toUpperCase();
+  cell.font = { bold: true, size: 10, color: { argb: COLORS.primaryText } };
+  cell.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: COLORS.lightGray },
+    fgColor: { argb: COLORS.primary },
   };
-  row.height = 22;
-  row.alignment = { vertical: "middle" };
+  cell.alignment = { vertical: "middle", horizontal: "left" };
+  sheet.mergeCells(`B${rowNumber}:C${rowNumber}`);
+  row.height = 20;
 }
 
-function formatAmount(amount: number): number {
-  return Math.round(amount * 100) / 100;
+function styleInfoRows(
+  sheet: ExcelJS.Worksheet,
+  startRow: number,
+  endRow: number
+): void {
+  for (let i = startRow; i <= endRow; i++) {
+    const row = sheet.getRow(i);
+    row.getCell("B").font = {
+      bold: true,
+      size: 10,
+      color: { argb: COLORS.textMuted },
+    };
+    row.getCell("C").font = { size: 11, color: { argb: COLORS.text } };
+    row.getCell("C").alignment = { horizontal: "right" };
+    row.height = 20;
+  }
+}
+
+function formatAmount(amount: number): string {
+  const abs = Math.abs(amount);
+  const formatted = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(abs);
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}₹${formatted}`;
 }
 
 function formatDate(date: Date): string {

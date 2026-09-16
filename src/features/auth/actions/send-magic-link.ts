@@ -2,66 +2,21 @@
 
 /**
  * Send Magic Link Server Action
- *
- * FIXED VERSION (works on BOTH localhost & Vercel):
- * - Priority 1: NEXT_PUBLIC_APP_URL from env (if set)
- * - Priority 2: Auto-detect from request headers (x-forwarded-proto + host)
- * - Priority 3: Fallback to localhost
- *
- * CRITICAL:
+ * 
+ * FIXED VERSION:
+ * - Uses absolute URL with explicit origin
+ * - Sets callbackURL dynamically based on env
+ * - Ensures Magic Link redirects to correct domain (Vercel or localhost)
+ * 
+ * CRITICAL FIX:
  * - callbackURL must be FULL URL (not relative)
- * - HTTPS on Vercel, HTTP on localhost — auto-detected
+ * - Uses NEXT_PUBLIC_APP_URL from env
  */
-
-import { headers } from "next/headers";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/config/env";
 import type { ApiResponse } from "@/types";
-
-// ═══════════════════════════════════════════════════════════
-// HELPER: Resolve App URL (works on localhost + Vercel)
-// ═══════════════════════════════════════════════════════════
-
-async function resolveAppUrl(): Promise<string> {
-  // ── Priority 1: Env var (if explicitly set) ──
-  const envUrl = env.NEXT_PUBLIC_APP_URL?.trim();
-  if (envUrl) {
-    // Strip trailing slash
-    const clean = envUrl.replace(/\/+$/, "");
-
-    // Guard: if env says "https://localhost", fix it to http
-    if (clean.startsWith("https://localhost")) {
-      return clean.replace("https://localhost", "http://localhost");
-    }
-    if (clean.startsWith("https://127.0.0.1")) {
-      return clean.replace("https://127.0.0.1", "http://127.0.0.1");
-    }
-
-    return clean;
-  }
-
-  // ── Priority 2: Auto-detect from request headers ──
-  try {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host");
-    const proto =
-      h.get("x-forwarded-proto") ??
-      (host?.includes("localhost") || host?.includes("127.0.0.1")
-        ? "http"
-        : "https");
-
-    if (host) {
-      return `${proto}://${host}`;
-    }
-  } catch {
-    // headers() unavailable outside request scope — ignore
-  }
-
-  // ── Priority 3: Fallback ──
-  return "http://localhost:3000";
-}
 
 // ═══════════════════════════════════════════════════════════
 // SERVER ACTION
@@ -100,9 +55,18 @@ export async function sendMagicLink(): Promise<ApiResponse> {
     }
 
     // ═══════════════════════════════════════════
-    // STEP 3: DETERMINE APP URL (auto localhost/Vercel)
+    // STEP 3: DETERMINE APP URL (CRITICAL FIX)
     // ═══════════════════════════════════════════
-    const appUrl = await resolveAppUrl();
+    // Use NEXT_PUBLIC_APP_URL from env — Vercel or localhost
+    const appUrl = env.NEXT_PUBLIC_APP_URL;
+
+    if (!appUrl) {
+      return {
+        success: false,
+        error: "NEXT_PUBLIC_APP_URL is not configured",
+      };
+    }
+
     console.log(`[SendMagicLink] App URL: ${appUrl}`);
 
     // ═══════════════════════════════════════════
@@ -114,7 +78,7 @@ export async function sendMagicLink(): Promise<ApiResponse> {
         // ⚠️ CRITICAL: Full URL — not relative
         callbackURL: `${appUrl}/dashboard`,
       },
-      headers: await headers(),
+      headers: new Headers(),
     });
 
     return {
@@ -126,7 +90,9 @@ export async function sendMagicLink(): Promise<ApiResponse> {
     console.error("[SendMagicLink] Error:", error);
 
     const message =
-      error instanceof Error ? error.message : "Failed to send magic link";
+      error instanceof Error
+        ? error.message
+        : "Failed to send magic link";
 
     return {
       success: false,

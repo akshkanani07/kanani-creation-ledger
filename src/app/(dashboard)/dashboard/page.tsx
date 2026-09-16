@@ -51,11 +51,22 @@ export default async function DashboardPage() {
 
   // ═══════════════════════════════════════════
   // GREETING (Time-based)
+  // 
+  // MORNING   : 6:00 AM  → 11:59 AM  (Good morning)
+  // AFTERNOON : 12:00 PM → 5:59 PM   (Good afternoon)
+  // EVENING   : 6:00 PM  → 5:59 AM   (Good evening)
   // ═══════════════════════════════════════════
   const now = new Date();
   const hour = now.getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  let greeting: string;
+  if (hour >= 6 && hour < 12) {
+    greeting = "Good morning";
+  } else if (hour >= 12 && hour < 18) {
+    greeting = "Good afternoon";
+  } else {
+    greeting = "Good evening";
+  }
 
   const today = now.toLocaleDateString("en-IN", {
     weekday: "long",

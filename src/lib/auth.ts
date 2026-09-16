@@ -1,23 +1,15 @@
 /**
  * Better Auth Server Configuration
- * 
- * Central authentication setup. Uses:
- * - Prisma adapter for database storage
- * - Magic Link plugin for passwordless login
- * - Mailjet for sending emails
- * 
- * DESIGN DECISIONS:
- * - No passwords: Single owner, email-based auth is safer
- * - 7-day sessions: Mobile-friendly, reduces re-login
- * - 10-min magic links: Security best practice
- * - Dashboard as callback: Direct redirect after login
  */
 
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { magicLink } from "better-auth/plugins";
 import { prisma } from "@/lib/prisma";
-import { sendMagicLinkEmail } from "@/lib/mailjet";
+import {
+  sendMagicLinkEmail,
+  sendEmailChangeVerification,
+} from "@/lib/mailjet";
 import { env } from "@/config/env";
 
 export const auth = betterAuth({
@@ -39,11 +31,11 @@ export const auth = betterAuth({
   // SESSION
   // ═══════════════════════════════════════════
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24,     // Refresh every 24h
+    expiresIn: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60 * 24,
     cookieCache: {
       enabled: true,
-      maxAge: 5 * 60,            // 5 minutes
+      maxAge: 5 * 60,
     },
   },
 
@@ -62,31 +54,43 @@ export const auth = betterAuth({
   ].filter(Boolean),
 
   // ═══════════════════════════════════════════
+  // USER — CHANGE EMAIL
+  // ═══════════════════════════════════════════
+  user: {
+    changeEmail: {
+      enabled: true,
+      sendChangeEmailVerification: async ({ user, newEmail, url }) => {
+        console.log(`[ChangeEmail] ═══════════════════════════`);
+        console.log(`[ChangeEmail] OLD email: ${user.email}`);
+        console.log(`[ChangeEmail] NEW email: ${newEmail}`);
+        console.log(`[ChangeEmail] URL: ${url}`);
+
+        await sendEmailChangeVerification({
+          oldEmail: user.email,
+          newEmail,
+          verificationUrl: url,
+        });
+
+        console.log(`[ChangeEmail] ✅ Sent to: ${newEmail}`);
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════
   // PLUGINS
   // ═══════════════════════════════════════════
   plugins: [
-  magicLink({
-    sendMagicLink: async ({ email, url }) => {
-      console.log(`[MagicLink] ═══════════════════════════`);
-      console.log(`[MagicLink] Sending to: ${email}`);
-      console.log(`[MagicLink] URL: ${url}`);
-      console.log(`[MagicLink] Calling Mailjet...`);
+    magicLink({
+      sendMagicLink: async ({ email, url }) => {
+        console.log(`[MagicLink] Sending to: ${email}`);
+        console.log(`[MagicLink] URL: ${url}`);
 
-      try {
         await sendMagicLinkEmail({ email, url });
-        console.log(`[MagicLink] ✅ Email sent successfully!`);
-      } catch (error) {
-        console.error(`[MagicLink] ❌ FAILED:`, error);
-        if (error instanceof Error) {
-          console.error(`[MagicLink] Error message:`, error.message);
-          console.error(`[MagicLink] Stack:`, error.stack);
-        }
-        throw error; // ← Better Auth ne error aapo
-      }
-    },
 
-    expiresIn: 60 * 10,
-    disableSignUp: true,
-  }),
-],
+        console.log(`[MagicLink] ✅ Sent`);
+      },
+      expiresIn: 60 * 10,
+      disableSignUp: true,
+    }),
+  ],
 });

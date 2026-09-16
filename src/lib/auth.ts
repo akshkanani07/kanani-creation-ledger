@@ -65,23 +65,28 @@ export const auth = betterAuth({
   // PLUGINS
   // ═══════════════════════════════════════════
   plugins: [
-    magicLink({
-      /**
-       * Called by Better Auth when generating a magic link.
-       * Sends email via Mailjet.
-       */
-      sendMagicLink: async ({ email, url }) => {
-        console.log(`[MagicLink] Sending to: ${email}`);
-        console.log(`[MagicLink] URL: ${url}`);
+  magicLink({
+    sendMagicLink: async ({ email, url }) => {
+      console.log(`[MagicLink] ═══════════════════════════`);
+      console.log(`[MagicLink] Sending to: ${email}`);
+      console.log(`[MagicLink] URL: ${url}`);
+      console.log(`[MagicLink] Calling Mailjet...`);
 
+      try {
         await sendMagicLinkEmail({ email, url });
-      },
+        console.log(`[MagicLink] ✅ Email sent successfully!`);
+      } catch (error) {
+        console.error(`[MagicLink] ❌ FAILED:`, error);
+        if (error instanceof Error) {
+          console.error(`[MagicLink] Error message:`, error.message);
+          console.error(`[MagicLink] Stack:`, error.stack);
+        }
+        throw error; // ← Better Auth ne error aapo
+      }
+    },
 
-      // Link expires in 10 minutes
-      expiresIn: 60 * 10,
-
-      // Disable sign-up — only existing users can log in
-      disableSignUp: true,
-    }),
-  ],
+    expiresIn: 60 * 10,
+    disableSignUp: true,
+  }),
+],
 });

@@ -11,6 +11,9 @@
  * - Glass morphism background
  * - Smooth tap animations
  * 
+ * TABS:
+ * Home | Karigar | + (Add) | Ledger | Reports
+ * 
  * RESPONSIVE:
  * - Mobile & Tablet: Visible
  * - Desktop (lg+): Hidden (sidebar handles it)
@@ -22,8 +25,8 @@ import {
   LayoutDashboard,
   Users,
   Plus,
+  BookOpen,
   FileText,
-  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/config/constants";
@@ -52,14 +55,14 @@ const NAV_ITEMS = [
     primary: true,
   },
   {
+    label: "Ledger",
+    href: ROUTES.LEDGER,
+    icon: BookOpen,
+  },
+  {
     label: "Reports",
     href: ROUTES.REPORTS,
     icon: FileText,
-  },
-  {
-    label: "Settings",
-    href: ROUTES.SETTINGS,
-    icon: Settings,
   },
 ] as const;
 

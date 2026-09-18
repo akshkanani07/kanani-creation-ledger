@@ -10,6 +10,7 @@
  * 4. Update Owner email
  * 5. Delete used verification token
  * 6. Log activity
+ * 7. Sign out all sessions (force re-login with new email)
  * 
  * ⚠️ NO revalidatePath — this action runs during page render.
  * Cache will update naturally on next navigation.
@@ -53,6 +54,10 @@ export async function verifyEmailChange(
 
     const { token, ownerId } = parsed.data;
 
+    console.log(`[VerifyEmailChange] ═══════════════════════════`);
+    console.log(`[VerifyEmailChange] ownerId: ${ownerId}`);
+    console.log(`[VerifyEmailChange] token: ${token.slice(0, 10)}...`);
+
     // ═══════════════════════════════════════════
     // FIND VERIFICATION TOKEN
     // ═══════════════════════════════════════════
@@ -63,6 +68,7 @@ export async function verifyEmailChange(
     });
 
     if (!verification) {
+      console.error(`[VerifyEmailChange] ❌ Token not found in DB`);
       return {
         success: false,
         error: "Verification link is invalid or has expired",
@@ -101,6 +107,7 @@ export async function verifyEmailChange(
     // VERIFY TOKEN MATCHES
     // ═══════════════════════════════════════════
     if (parsedValue.token !== token) {
+      console.error(`[VerifyEmailChange] ❌ Token mismatch`);
       return {
         success: false,
         error: "Invalid verification token",
@@ -108,6 +115,8 @@ export async function verifyEmailChange(
     }
 
     const { newEmail } = parsedValue;
+
+    console.log(`[VerifyEmailChange] New email: ${newEmail}`);
 
     // ═══════════════════════════════════════════
     // CHECK OWNER EXISTS
@@ -122,6 +131,8 @@ export async function verifyEmailChange(
         error: "Owner account not found",
       };
     }
+
+    console.log(`[VerifyEmailChange] Old email: ${owner.email}`);
 
     // ═══════════════════════════════════════════
     // CHECK NEW EMAIL NOT IN USE (Race Condition)
@@ -141,7 +152,7 @@ export async function verifyEmailChange(
     }
 
     // ═══════════════════════════════════════════
-    // UPDATE OWNER EMAIL (DATA PRESERVED)
+    // 🔥 UPDATE OWNER EMAIL
     // ═══════════════════════════════════════════
     const oldEmail = owner.email;
 
@@ -153,6 +164,20 @@ export async function verifyEmailChange(
         updatedAt: new Date(),
       },
     });
+
+    console.log(`[VerifyEmailChange] ✅ Email updated: ${oldEmail} → ${newEmail}`);
+
+    // ═══════════════════════════════════════════
+    // 🔥 DELETE ALL SESSIONS (force re-login)
+    // ═══════════════════════════════════════════
+    try {
+      await prisma.session.deleteMany({
+        where: { userId: ownerId },
+      });
+      console.log(`[VerifyEmailChange] ✅ Sessions cleared`);
+    } catch (err) {
+      console.warn(`[VerifyEmailChange] Session clear failed:`, err);
+    }
 
     // ═══════════════════════════════════════════
     // DELETE USED VERIFICATION TOKEN

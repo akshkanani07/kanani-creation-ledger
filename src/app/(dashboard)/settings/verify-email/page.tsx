@@ -9,11 +9,9 @@
  * 1. Parse token + ownerId from URL
  * 2. Call verifyEmailChange() Server Action
  * 3. Show success/error state
- * 4. Auto-redirect to /settings on success
+ * 4. Auto-redirect to /login on success (session cleared)
  */
 
-import { Suspense } from "react";
-import { redirect } from "next/navigation";
 import { verifyEmailChange } from "@/features/settings/actions/verify-email-change";
 import { VerifyEmailClient } from "@/features/settings/components/verify-email-client";
 
@@ -22,10 +20,6 @@ export const metadata = {
   description: "Verifying your new email address",
 };
 
-// ═══════════════════════════════════════════════════════════
-// PAGE PROPS
-// ═══════════════════════════════════════════════════════════
-
 interface PageProps {
   searchParams: Promise<{
     token?: string;
@@ -33,13 +27,12 @@ interface PageProps {
   }>;
 }
 
-// ═══════════════════════════════════════════════════════════
-// PAGE COMPONENT
-// ═══════════════════════════════════════════════════════════
-
 export default async function VerifyEmailPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const { token, id } = params;
+
+  console.log(`[VerifyEmailPage] token: ${token?.slice(0, 10)}...`);
+  console.log(`[VerifyEmailPage] id: ${id}`);
 
   // ═══════════════════════════════════════════
   // MISSING PARAMS

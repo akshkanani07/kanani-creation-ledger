@@ -2,17 +2,16 @@
 
 /**
  * App Header — Sticky Top Bar
- * 
+ *
  * FEATURES:
  * - Sticky positioning
  * - Mobile logo (Master Logo Image)
  * - Real search (navigates to /karigar?search=...)
  * - User menu (Settings, Sign out)
- * - NO notification bell
- * - NO profile link
- * 
+ * - Search visible on all screens
+ *
  * RESPONSIVE:
- * - Mobile: Logo + User Menu only
+ * - Mobile: Logo + Search + User Menu
  * - Desktop: Page context + Search + User Menu
  */
 
@@ -86,12 +85,12 @@ export function AppHeader({ user }: AppHeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200/60">
-      <div className="h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
-        
+      <div className="h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
+
         {/* ═══════════════════════════════════════════ */}
         {/* LEFT — Mobile Logo */}
         {/* ═══════════════════════════════════════════ */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-2.5">
             <img
@@ -121,11 +120,11 @@ export function AppHeader({ user }: AppHeaderProps) {
         </div>
 
         {/* ═══════════════════════════════════════════ */}
-        {/* CENTER — Real Search (Desktop) */}
+        {/* CENTER — Search (now visible on ALL screens) */}
         {/* ═══════════════════════════════════════════ */}
         <form
           onSubmit={handleSearch}
-          className="hidden md:flex flex-1 max-w-md"
+          className="flex flex-1 max-w-md min-w-0"
         >
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -133,16 +132,16 @@ export function AppHeader({ user }: AppHeaderProps) {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search karigars by name or phone..."
-              className="w-full h-10 pl-10 pr-4 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/5 transition-all"
+              placeholder="Search karigars..."
+              className="w-full h-9 sm:h-10 pl-9 sm:pl-10 pr-4 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/5 transition-all"
             />
           </div>
         </form>
 
         {/* ═══════════════════════════════════════════ */}
-        {/* RIGHT — User Menu Only */}
+        {/* RIGHT — User Menu */}
         {/* ═══════════════════════════════════════════ */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -184,7 +183,7 @@ export function AppHeader({ user }: AppHeaderProps) {
 
               <DropdownMenuSeparator className="my-1.5" />
 
-              {/* Settings Only */}
+              {/* Settings */}
               <DropdownMenuItem
                 onClick={() => router.push(ROUTES.SETTINGS)}
                 className="cursor-pointer gap-2.5 py-2"

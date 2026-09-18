@@ -1,81 +1,79 @@
 /**
  * Better Auth Server Configuration
+ * 
+ * Central authentication setup. Uses:
+ * - Prisma adapter for database storage
+ * - Magic Link plugin for passwordless login
+ * - Mailjet for sending emails
+ * 
+ * DESIGN DECISIONS:
+ * - No passwords: Single owner, email-based auth is safer
+ * - 7-day sessions: Mobile-friendly, reduces re-login
+ * - 10-min magic links: Security best practice
+ * - Dashboard as callback: Direct redirect after login
+ * - Custom email change flow: request-email-change.ts (not Better Auth)
  */
 
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { magicLink } from "better-auth/plugins";
 import { prisma } from "@/lib/prisma";
-import {
-  sendMagicLinkEmail,
-  sendEmailChangeVerification,
-} from "@/lib/mailjet";
+import { sendMagicLinkEmail } from "@/lib/mailjet";
 import { env } from "@/config/env";
 
 export const auth = betterAuth({
+  // ═══════════════════════════════════════════
+  // DATABASE
+  // ═══════════════════════════════════════════
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
 
+  // ═══════════════════════════════════════════
+  // EMAIL/PASSWORD (Disabled)
+  // ═══════════════════════════════════════════
   emailAndPassword: {
     enabled: false,
   },
 
+  // ═══════════════════════════════════════════
+  // SESSION
+  // ═══════════════════════════════════════════
   session: {
-    expiresIn: 60 * 60 * 24 * 7,
-    updateAge: 60 * 60 * 24,
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24,     // Refresh every 24h
     cookieCache: {
       enabled: true,
-      maxAge: 5 * 60,
+      maxAge: 5 * 60,            // 5 minutes
     },
   },
 
+  // ═══════════════════════════════════════════
+  // BASE URL & SECRET
+  // ═══════════════════════════════════════════
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
+  // ═══════════════════════════════════════════
+  // TRUSTED ORIGINS
+  // ═══════════════════════════════════════════
   trustedOrigins: [
     "http://localhost:3000",
     env.NEXT_PUBLIC_APP_URL,
   ].filter(Boolean),
 
   // ═══════════════════════════════════════════
-  // USER — CHANGE EMAIL
+  // ⚠️ EMAIL CHANGE — Custom Flow
   // ═══════════════════════════════════════════
-  user: {
-    changeEmail: {
-      enabled: true,
-
-      sendChangeEmailVerification: async ({ user, newEmail, url }) => {
-        console.log(`[ChangeEmail] OLD: ${user.email}`);
-        console.log(`[ChangeEmail] NEW: ${newEmail}`);
-        console.log(`[ChangeEmail] URL: ${url}`);
-
-        await sendEmailChangeVerification({
-          oldEmail: user.email,
-          newEmail,
-          verificationUrl: url,
-        });
-
-        console.log(`[ChangeEmail] ✅ Verification sent to: ${newEmail}`);
-      },
-
-      onEmailChange: async ({ user, newEmail }) => {
-        console.log(`[ChangeEmail] onEmailChange CALLED`);
-        console.log(`[ChangeEmail] Updating: ${user.email} → ${newEmail}`);
-
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            email: newEmail,
-            emailVerified: true,
-            updatedAt: new Date(),
-          },
-        });
-
-        console.log(`[ChangeEmail] ✅ DB updated: ${newEmail}`);
-      },
-    },
-  },
+  // 
+  // Better Auth no changeEmail plugin use NATHI karyo.
+  // 
+  // Custom flow:
+  //   1. request-email-change.ts → verification record create
+  //   2. Nava email par link mokle
+  //   3. verify-email-change.ts → DB update
+  //
+  // Aa rite Better Auth no conflict nathi thато.
 
   // ═══════════════════════════════════════════
   // PLUGINS
@@ -83,9 +81,10 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
+        console.log(`[MagicLink] ═══════════════════════════`);
         console.log(`[MagicLink] Input email: ${email}`);
 
-        // ✅ DB thi fresh email
+        // ✅ DB thi owner nu fresh email lo
         const owner = await prisma.user.findFirst({
           select: { id: true, email: true, emailVerified: true },
         });
@@ -96,7 +95,9 @@ export const auth = betterAuth({
         }
 
         console.log(`[MagicLink] DB owner email: ${owner.email}`);
+        console.log(`[MagicLink] DB emailVerified: ${owner.emailVerified}`);
 
+        // ✅ DB thi fresh email par moklo
         await sendMagicLinkEmail({
           email: owner.email,
           url,
@@ -105,7 +106,7 @@ export const auth = betterAuth({
         console.log(`[MagicLink] ✅ Sent to: ${owner.email}`);
       },
 
-      expiresIn: 60 * 10,
+      expiresIn: 60 * 10, // 10 minutes
       disableSignUp: true,
     }),
   ],

@@ -1,23 +1,19 @@
 /**
- * Dashboard Home Page — Premium UI
+ * Dashboard Home Page — Premium UI/UX
  * 
  * LANDING PAGE for authenticated Owner.
  * 
  * PREMIUM FEATURES:
- * - Gradient hero header with live indicator
- * - Enhanced stats grid with hover effects
- * - Time-based greeting (6AM-12PM / 12PM-6PM / 6PM-6AM)
+ * - Gradient hero with animated mesh
+ * - Live ping indicator
+ * - IST timezone-aware greeting
  * - Glass morphism cards
- * - Smooth animations
- * - Mobile-first responsive design
+ * - Smooth micro-interactions
+ * - Mobile-first responsive
  * 
  * DATA:
  * - Fetched via Server Action (get-dashboard-stats)
- * - Falls back to empty state if no data
- * 
- * WHY SERVER COMPONENT:
- * - SEO & Performance (no JS on client)
- * - Direct Prisma access (no API layer)
+ * - Suspense boundaries for streaming
  * - Auto-refresh on navigation
  */
 
@@ -55,17 +51,33 @@ export default async function DashboardPage() {
   const userName = session?.user?.name || "Owner";
 
   // ═══════════════════════════════════════════
-  // GREETING (Time-based)
+  // IST TIMEZONE-AWARE GREETING
   // 
   // MORNING   : 6:00 AM  → 11:59 AM  (Good morning)
   // AFTERNOON : 12:00 PM → 5:59 PM   (Good afternoon)
   // EVENING   : 6:00 PM  → 5:59 AM   (Good evening)
   // ═══════════════════════════════════════════
   const now = new Date();
-  const hour = now.getHours();
+
+  // ✅ Convert to IST properly
+  const istParts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "numeric",
+    hour12: false,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).formatToParts(now);
+
+  const getPart = (type: string) =>
+    istParts.find((p) => p.type === type)?.value ?? "";
+
+  const hour = parseInt(getPart("hour"), 10);
 
   let greeting: string;
   let greetingEmoji: string;
+
   if (hour >= 6 && hour < 12) {
     greeting = "Good morning";
     greetingEmoji = "☀️";
@@ -77,66 +89,73 @@ export default async function DashboardPage() {
     greetingEmoji = "🌙";
   }
 
-  const today = now.toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const today = `${getPart("weekday")}, ${getPart("day")} ${getPart(
+    "month"
+  )} ${getPart("year")}`;
 
   return (
     <div className="space-y-6 lg:space-y-8 max-w-7xl mx-auto">
       
       {/* ═══════════════════════════════════════════ */}
-      {/* PREMIUM WELCOME HEADER */}
+      {/* PREMIUM HERO HEADER */}
       {/* ═══════════════════════════════════════════ */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 lg:p-8 shadow-2xl shadow-slate-900/20">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 lg:p-10 shadow-2xl shadow-slate-900/30 border border-slate-800/50">
         
-        {/* Decorative gradient blobs */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-emerald-500/10 to-transparent rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+        {/* Animated gradient blobs */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-500/30 via-indigo-500/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 animate-pulse" 
+             style={{ animationDuration: '4s' }} />
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-emerald-500/20 via-teal-500/10 to-transparent rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 animate-pulse" 
+             style={{ animationDuration: '6s' }} />
         
         {/* Grid pattern overlay */}
-        <div 
-          className="absolute inset-0 opacity-[0.03]"
+        <div
+          className="absolute inset-0 opacity-[0.04]"
           style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)`,
-            backgroundSize: '32px 32px',
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
           }}
         />
 
-        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-2">
+        {/* Radial highlight */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.1),transparent_50%)]" />
+
+        <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+          <div className="space-y-4">
             {/* Live indicator */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/10">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.08] backdrop-blur-md border border-white/10">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
               </span>
-              <span className="text-[10px] font-semibold text-white/90 tracking-wider uppercase">
+              <span className="text-[10px] font-bold text-white/90 tracking-[0.15em] uppercase">
                 Live Dashboard
               </span>
             </div>
 
             {/* Greeting */}
-            <h1 className="text-2xl lg:text-4xl font-bold text-white tracking-tight">
-              {greetingEmoji} {greeting},{" "}
-              <span className="bg-gradient-to-r from-blue-300 to-emerald-300 bg-clip-text text-transparent">
-                {userName}
-              </span>
-            </h1>
+            <div className="space-y-2">
+              <h1 className="text-2xl lg:text-4xl font-bold text-white tracking-tight leading-tight">
+                <span className="mr-2">{greetingEmoji}</span>
+                {greeting},{" "}
+                <span className="bg-gradient-to-r from-blue-300 via-cyan-300 to-emerald-300 bg-clip-text text-transparent">
+                  {userName}
+                </span>
+              </h1>
 
-            {/* Date */}
-            <div className="flex items-center gap-2 text-slate-300/90">
-              <Clock className="w-3.5 h-3.5" />
-              <p className="text-sm">{today}</p>
+              {/* Date with clock icon */}
+              <div className="flex items-center gap-2 text-slate-400">
+                <div className="flex items-center justify-center w-5 h-5 rounded-full bg-white/[0.06] border border-white/10">
+                  <Clock className="w-2.5 h-2.5" />
+                </div>
+                <p className="text-xs font-medium tracking-wide">{today}</p>
+              </div>
             </div>
           </div>
 
-          {/* Right side: Sparkle badge */}
-          <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10">
+          {/* Right side badge */}
+          <div className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/[0.04] backdrop-blur-md border border-white/10 shadow-lg shadow-black/5">
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span className="text-xs font-semibold text-white/90">
+            <span className="text-xs font-semibold text-white/90 whitespace-nowrap">
               Everything in sync
             </span>
           </div>
@@ -144,28 +163,32 @@ export default async function DashboardPage() {
       </div>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* STATS GRID */}
+      {/* STATS SECTION */}
       {/* ═══════════════════════════════════════════ */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+      <section>
+        <div className="flex items-end justify-between mb-5">
+          <div className="space-y-0.5">
+            <h2 className="text-lg lg:text-xl font-bold text-slate-900 tracking-tight">
               Overview
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500">
               Your business at a glance
             </p>
           </div>
-          <div className="hidden sm:flex items-center gap-1 text-xs text-slate-400">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>Updated live</span>
+
+          <div className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+            </span>
+            Updated live
           </div>
         </div>
 
         <Suspense fallback={<StatsSkeleton />}>
           <DashboardStats />
         </Suspense>
-      </div>
+      </section>
 
       {/* ═══════════════════════════════════════════ */}
       {/* QUICK ACTIONS */}
@@ -177,7 +200,7 @@ export default async function DashboardPage() {
       {/* ═══════════════════════════════════════════ */}
       <Suspense
         fallback={
-          <div className="h-80 bg-white rounded-2xl border border-slate-200/60 animate-pulse" />
+          <div className="h-80 bg-white rounded-3xl border border-slate-200/60 animate-pulse" />
         }
       >
         <RecentTransactions />
@@ -187,7 +210,7 @@ export default async function DashboardPage() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// STATS SUB-COMPONENT (Async Server Component)
+// STATS SUB-COMPONENT
 // ═══════════════════════════════════════════════════════════
 
 async function DashboardStats() {
